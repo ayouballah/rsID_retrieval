@@ -98,7 +98,7 @@ def process_norsid_entries(annotated_vcf_path, final_output_vcf_path, progress_c
         
         total_rows = vcf.shape[0]
         for idx, row in tqdm(vcf.iterrows(), total=total_rows, desc="Processing NORSID entries"):
-            if row['ID'] == "NORSID":
+            if row['ID'] == "NORSID" or".":# a fail mechanism just incase the first Api stops responding properly 
                 rsid = fetch_rsid_entrez(row['CHROM'], row['POS'])
                 if rsid:
                     vcf.at[idx, 'ID'] = rsid
@@ -130,6 +130,17 @@ def annotate_vcf_with_ncbi(input_vcf_path, final_output_vcf_path, progress_callb
                 print(f"Error: {response.status_code}, {response.text}")
     except Exception as e:
         print(f"An error occurred during annotation: {e}")
+
+def test_entrez():
+    Entrez.email = "your_email@example.com"  # Replace with your email
+    try:
+        handle = Entrez.esearch(db="snp", term="16[CHR] AND 123456[POS]")
+        record = Entrez.read(handle)
+        handle.close()
+        print(f"Entrez test successful: {record}")
+    except Exception as e:
+        print(f"An error occurred during Entrez test: {e}")
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -205,7 +216,6 @@ class MainWindow(QMainWindow):
         save_config(config)
         Entrez.email = email
 
-
     def browse_input_vcf(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open VCF File", "", "VCF Files (*.vcf);;All Files (*)")
         if file_name:
@@ -228,12 +238,12 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Input Error", "Please specify both input VCF file and output directory.")
             return
 
-        base_name=os.path.splitext(os.path.basename(input_vcf))[0]
+        base_name = os.path.splitext(os.path.basename(input_vcf))[0]
         modified_vcf = os.path.join(output_dir, f"{base_name}_annotated_modified.vcf")
         cleaned_vcf = os.path.join(output_dir, f"{base_name}_annotated_cleaned.vcf")
         final_output_vcf = os.path.join(output_dir, f"{base_name}_final_annotation.vcf")
 
-        email=self.email_edit.text()
+        email = self.email_edit.text()
 
         command = f"python test3.py --input_vcf \"{input_vcf}\" --output_dir \"{output_dir}\" --type {modification_type} --email \"{email}\""
         if modification_type == "CES1P1-CES1":
@@ -266,7 +276,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Modify, clean, and annotate a VCF file.")
     parser.add_argument("--input_vcf", type=str, help="Path to the input VCF file")
     parser.add_argument("--output_dir", type=str, help="Path to save the final annotated VCF file")
-    parser.add_argument("--email",type=str, help="email required by Entrez to initialize the search process")
+    parser.add_argument("--email", type=str, help="email required by Entrez to initialize the search process")
     parser.add_argument("--type", type=str, choices=["CES1P1-CES1", "CES1A2-CES1"], help="Type of position modification")
     parser.add_argument("--pos_modifier", type=int, default=55758218, help="Value to add to each POS entry (only for CES1P1-CES1)")
     parser.add_argument("--save_temp_files", action='store_true', help="Save temporary files")
@@ -291,7 +301,9 @@ if __name__ == "__main__":
                 modify_vcf_ces1a2_ces1(input_vcf, modified_vcf)
 
             clean_vcf(modified_vcf, cleaned_vcf)
-            annotate_vcf_with_ncbi(cleaned_vcf, final_output_vcf)
+            def dummy_progress_callback(value):
+                pass
+            annotate_vcf_with_ncbi(cleaned_vcf, final_output_vcf,dummy_progress_callback)
 
             if not save_temp_files:
                 os.remove(modified_vcf)
@@ -302,6 +314,9 @@ if __name__ == "__main__":
             print("Error: Missing required arguments for command-line mode.")
             parser.print_help()
     else:
+        # Test Entrez functionality
+        test_entrez()
+
         app = QApplication(sys.argv)
         window = MainWindow()
         window.show()

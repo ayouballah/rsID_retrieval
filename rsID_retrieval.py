@@ -145,7 +145,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("VCF annotate")
+        self.setWindowTitle("rsID_retrieval")
         self.setGeometry(100, 100, 600, 400)
         
         layout = QVBoxLayout()

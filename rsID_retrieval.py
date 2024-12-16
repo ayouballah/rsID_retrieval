@@ -69,7 +69,7 @@ def clean_vcf(input_vcf, output_vcf):
     vcf = pd.read_csv(input_vcf, comment='#', sep='\t', header=None, dtype=str)
     vcf.columns = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO', 'FORMAT', 'SAMPLE']
     vcf_cleaned = vcf[['CHROM', 'POS','ID', 'REF', 'ALT','QUAL','SAMPLE']]
-    vcf_cleaned['CHROM'] = 'NC_000016.10'# please change this if you're looking at another chromosome 
+    vcf_cleaned['CHROM'] = 'NC_000016.10'# please change this if you're looking at another chromosome we are looking at chromosome number 16
     vcf_cleaned.to_csv(output_vcf, sep='\t', index=False, header=False)
     print(f"Cleaned VCF file saved to {output_vcf}")
 
@@ -290,10 +290,10 @@ if __name__ == "__main__":
             modification_type = args.type
             pos_modifier = args.pos_modifier
             save_temp_files = args.save_temp_files
-
-            modified_vcf = os.path.join(output_dir, "modified.vcf")
-            cleaned_vcf = os.path.join(output_dir, "cleaned.vcf")
-            final_output_vcf = os.path.join(output_dir, "final_output.vcf")
+            base_name = os.path.splitext(os.path.basename(input_vcf))[0]
+            modified_vcf = os.path.join(output_dir,f"{base_name}modified.vcf")
+            cleaned_vcf = os.path.join(output_dir,f"{base_name}cleaned.vcf")
+            final_output_vcf = os.path.join(output_dir,f"{base_name}_final_annotation.vcf")# quick fix around TODO: make base name a global variable instead of defining it in multiple places   
 
             if modification_type == "CES1P1-CES1":
                 modify_vcf_ces1p1_ces1(input_vcf, modified_vcf, pos_modifier)

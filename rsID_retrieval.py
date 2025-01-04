@@ -1,16 +1,17 @@
 import sys
+import os
 import pandas as pd
 import argparse
 import requests
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QVBoxLayout, QPushButton, QLineEdit, 
-    QLabel, QComboBox, QWidget, QMessageBox, QCheckBox, QTextEdit,QProgressBar
+    QLabel, QComboBox, QWidget, QMessageBox, QCheckBox, QTextEdit, QProgressBar
 )
-import os
 import time
 from Bio import Entrez
 from tqdm import tqdm
 import json
+import shutil
 
 CONFIG_FILE = "config.json"
 
@@ -45,6 +46,21 @@ def modify_vcf_ces1p1_ces1(input_vcf, output_vcf, pos_modifier=55758218):
     print(f"VCF file modified successfully. Output saved to {output_vcf}")
 
 def modify_vcf_ces1a2_ces1(input_vcf, output_vcf):
+    """
+    Modify the POS field in a VCF file based on specific criteria.
+
+    This function reads an input VCF file, adjusts the POS (position) values according to a predefined
+    lambda function, and writes the modified data to an output VCF file. The modification involves
+    adding a positional modifier if the original POS is less than 2358 or subtracting from a base
+    value if the POS is greater than 32634. Positions that do not meet these criteria remain unchanged.
+
+    Parameters:
+        input_vcf (str): Path to the input VCF file to be modified.
+        output_vcf (str): Path where the modified VCF file will be saved.
+
+    Returns:
+        None
+    """
     with open(input_vcf, 'r') as file:
         lines = file.readlines()
         header_lines = [line for line in lines if line.startswith('##')]
@@ -55,7 +71,8 @@ def modify_vcf_ces1a2_ces1(input_vcf, output_vcf):
     data = [line.strip().split('\t') for line in data_lines]
     df = pd.DataFrame(data, columns=column_headers)
     df['POS'] = df['POS'].astype(int)
-    df['POS'] = df['POS'].apply(lambda x: 55758218 + x if x < 2358 else 55834270 - (72745 - x) if x > 32634 else x) # the potions are specific to the lab, you  might consider changing them 
+    df['POS'] = df['POS'].apply(lambda x: 55758218 + x if x < 2358 else 55834270 - (72745 - x) if x > 32634 else x)  # Modify as needed for your own application 
+    #TODO : remove magic numbers ✨  
 
     with open(output_vcf, 'w') as file:
         file.writelines(header_lines)
@@ -66,15 +83,44 @@ def modify_vcf_ces1a2_ces1(input_vcf, output_vcf):
     print(f"VCF file modified successfully. Output saved to {output_vcf}")
 
 def clean_vcf(input_vcf, output_vcf): 
+    """
+    Clean a VCF file by selecting specific columns and modifying the chromosome identifier.
+
+    This function reads an input VCF file, retains only the columns CHROM, POS, ID, REF, ALT, QUAL,
+    and SAMPLE, modifies the CHROM field to a specified value, and writes the cleaned data to an
+    output VCF file.
+
+    Parameters:
+        input_vcf (str): Path to the input VCF file to be cleaned.
+        output_vcf (str): Path where the cleaned VCF file will be saved.
+
+    Returns:
+        None
+    """
     vcf = pd.read_csv(input_vcf, comment='#', sep='\t', header=None, dtype=str)
     vcf.columns = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO', 'FORMAT', 'SAMPLE']
-    vcf_cleaned = vcf[['CHROM', 'POS','ID', 'REF', 'ALT','QUAL','SAMPLE']]
-    vcf_cleaned['CHROM'] = 'NC_000016.10'# please change this if you're looking at another chromosome we are looking at chromosome number 16
+    vcf_cleaned = vcf[['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'SAMPLE']]
+    vcf_cleaned['CHROM'] = 'NC_000016.10'  # Modify if needed
     vcf_cleaned.to_csv(output_vcf, sep='\t', index=False, header=False)
     print(f"Cleaned VCF file saved to {output_vcf}")
 
 def fetch_rsid_entrez(chromosome, position):
-    chromosome = chromosome.replace("NC_0000", "").split(".")[0]# entrez uses 16 as for a query so please change it as you see fit  
+    """
+    Fetch rsID(s) from NCBI Entrez for a given chromosome and position.
+
+    This function queries the NCBI Entrez SNP database to retrieve rsID(s) associated with the
+    specified chromosome and position. It constructs a search query, performs the search, and
+    returns a comma-separated string of rsIDs if found. If no rsIDs are found or an error occurs,
+    the function returns None.
+
+    Parameters:
+        chromosome (str): The chromosome identifier (for us is specifically "16").TODO make it depentant using regular expression
+        position (int): The genomic position on the chromosome.
+
+    Returns:
+        str or None: A comma-separated string of rsIDs if found, otherwise None.
+    """
+    chromosome = chromosome.replace("NC_0000", "").split(".")[0]  # Modify if needed  
     query = f"{chromosome}[CHR] AND {position}[POS]"
     
     try:
@@ -91,25 +137,46 @@ def fetch_rsid_entrez(chromosome, position):
         print(f"An error occurred while fetching rsID: {e}")
         return None
 
-def process_norsid_entries(annotated_vcf_path, final_output_vcf_path, progress_callback):
+def process_norsid_entries(annotated_vcf_path, output_vcf_path, progress_callback):
+    """
+    Annotate a VCF file with rsIDs using the NCBI Entrez API.
+
+    This function uploads the input VCF file to the NCBI Entrez API to retrieve rsID annotations.
+    Upon successful annotation, it saves the annotated VCF to the specified output path and
+    further processes any entries with missing rsIDs.
+
+    Parameters:
+        input_vcf_path (str): Path to the input VCF file to be annotated.
+        final_output_vcf_path (str): Path where the annotated VCF file will be saved.
+        progress_callback (callable): A function to update the progress bar (expects an integer).
+
+    Returns:
+        None
+    """
+    processed_norsid_vcf = output_vcf_path.replace("_final_annotation.vcf", "_norsid_processed.vcf")
     try:
         vcf = pd.read_csv(annotated_vcf_path, sep='\t', comment='#', header=None, dtype=str, 
                           names=["CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE"])
         
         total_rows = vcf.shape[0]
         for idx, row in tqdm(vcf.iterrows(), total=total_rows, desc="Processing NORSID entries"):
-            if row['ID'] == "NORSID" or".":# a fail mechanism just incase the first Api stops responding properly 
+            if row['ID'] == "NORSID" or row['ID'] == ".":  # A fallback mechanism if the first API fails
                 rsid = fetch_rsid_entrez(row['CHROM'], row['POS'])
-                if rsid:
-                    vcf.at[idx, 'ID'] = rsid
+                
+                if isinstance(rsid, list) or isinstance(rsid, tuple):  # If rsid is a sequence, use the first element
+                    rsid = rsid[0] if rsid else "NORSID"
+                elif not rsid:  # If no rsid is found, assign NORSID
+                    rsid = "NORSID"
+                
+                vcf.at[idx, 'ID'] = rsid
                 time.sleep(0.0001)  # Delay to avoid NCBI rate limits
             
-            # Only update progress bar every few steps for smoother transitions
             if idx % 10 == 0 or idx == total_rows - 1:
-                progress_callback(int((idx + 1) / total_rows * 100))
+                progress_callback(int((idx + 1) / total_rows * 100))  # Update progress bar
         
-        vcf.to_csv(final_output_vcf_path, sep='\t', index=False, header=False)
-        print(f"Final VCF with all annotations saved to {final_output_vcf_path}")
+        vcf.to_csv(processed_norsid_vcf, sep='\t', index=False, header=False)
+        shutil.move(processed_norsid_vcf, output_vcf_path)  # Rename to final output
+        print(f"Final VCF with all annotations saved to {output_vcf_path}")
     except Exception as e:
         print(f"An error occurred during processing NORSID entries: {e}")
 
@@ -131,6 +198,71 @@ def annotate_vcf_with_ncbi(input_vcf_path, final_output_vcf_path, progress_callb
     except Exception as e:
         print(f"An error occurred during annotation: {e}")
 
+def filter_rsids_vcf(final_output_vcf, filtered_rsids_vcf):
+    """
+    Filters the final annotated VCF to include only entries with rsIDs.
+    """
+    try:
+        vcf = pd.read_csv(final_output_vcf, comment='#', sep='\t', header=None, dtype=str)
+        vcf.columns = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO', 'FORMAT', 'SAMPLE']
+        
+        # Filter entries where ID starts with 'rs'
+        filtered_vcf = vcf[vcf['ID'].str.startswith('rs')]
+        filtered_vcf.to_csv(filtered_rsids_vcf, sep='\t', index=False, header=False)
+        print(f"Filtered rsIDs VCF saved to {filtered_rsids_vcf}")
+    except Exception as e:
+        print(f"An error occurred while filtering rsIDs: {e}")
+
+def filter_significant_rsids(filtered_rsids_vcf, significant_rsids_vcf, qual_threshold=20.0):
+    """
+    Filters the filtered rsIDs VCF to include only entries with QUAL >= qual_threshold.
+    """
+    try:
+        vcf = pd.read_csv(filtered_rsids_vcf, comment='#', sep='\t', header=None, dtype={'QUAL': float})
+        vcf.columns = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO', 'FORMAT', 'SAMPLE']
+        
+        # Filter based on QUAL score
+        significant_vcf = vcf[vcf['QUAL'] >= qual_threshold]
+        
+        # Save the filtered VCF
+        significant_vcf.to_csv(significant_rsids_vcf, sep='\t', index=False, header=False)
+        print(f"Significant rsIDs VCF saved to {significant_rsids_vcf}")
+    except Exception as e:
+        print(f"An error occurred while filtering significant rsIDs: {e}")
+
+def generate_summary_report(final_output_vcf, summary_report_path):
+    """
+    Generates a summary report based on the final annotated VCF file.
+    
+    Parameters:
+    - final_output_vcf (str): Path to the final annotated VCF file.
+    - summary_report_path (str): Path to save the summary report.
+    """
+    try:
+        vcf = pd.read_csv(final_output_vcf, comment='#', sep='\t', header=None, dtype=str)
+        base_name = os.path.splitext(os.path.basename(final_output_vcf))[0].replace("_final_annotation", "")
+    
+        total_reads = vcf.shape[0]
+        
+        # rsID is in the 3rd column (index 2)
+        with_rsid = vcf[vcf[2].str.startswith('rs')].shape[0]
+        without_rsid = total_reads - with_rsid
+        
+        # Quality is in the 6th column (index 5)
+        reliable_reads = vcf[(vcf[2].str.startswith('rs')) & (vcf[5].astype(float) >= 20)].shape[0]
+    
+        # Write the summary to the report file
+        with open(summary_report_path, 'w') as report_file:
+            report_file.write(f"Summary Report for {base_name}\n")
+            report_file.write(f"Total reads analyzed: {total_reads}\n")
+            report_file.write(f"Reads with an rsID: {with_rsid}\n")
+            report_file.write(f"Reads without an rsID: {without_rsid}\n")
+            report_file.write(f"Reliable reads (QUAL equal or higher than 20): {reliable_reads}\n")
+    
+        print(f"Summary report saved to {summary_report_path}")
+    except Exception as e:
+        print(f"An error occurred while generating summary report: {e}")
+
 def test_entrez():
     Entrez.email = "your_email@example.com"  # Replace with your email
     try:
@@ -145,8 +277,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("rsID_retrieval")
-        self.setGeometry(100, 100, 600, 400)
+        self.setWindowTitle("rsID Retrieval")
+        self.setGeometry(100, 100, 600, 600)
         
         layout = QVBoxLayout()
         
@@ -183,8 +315,7 @@ class MainWindow(QMainWindow):
         self.pos_modifier_edit.setText("55758218")
         layout.addWidget(self.pos_modifier_edit)
 
-        self.save_temp_checkbox = QCheckBox("Save Temporary Files")
-        layout.addWidget(self.save_temp_checkbox)
+
 
         self.run_button = QPushButton("Run")
         self.run_button.clicked.connect(self.run_modification)
@@ -195,6 +326,7 @@ class MainWindow(QMainWindow):
         self.command_display = QTextEdit()
         self.command_display.setReadOnly(True)
         layout.addWidget(self.command_display)
+        
         self.progress_bar = QProgressBar()
         layout.addWidget(self.progress_bar)
 
@@ -232,40 +364,55 @@ class MainWindow(QMainWindow):
         output_dir = self.output_dir_edit.text()
         modification_type = self.type_combo.currentText()
         pos_modifier = int(self.pos_modifier_edit.text())
-        save_temp_files = self.save_temp_checkbox.isChecked()
+
 
         if not input_vcf or not output_dir:
             QMessageBox.warning(self, "Input Error", "Please specify both input VCF file and output directory.")
             return
 
         base_name = os.path.splitext(os.path.basename(input_vcf))[0]
-        modified_vcf = os.path.join(output_dir, f"{base_name}_annotated_modified.vcf")
-        cleaned_vcf = os.path.join(output_dir, f"{base_name}_annotated_cleaned.vcf")
-        final_output_vcf = os.path.join(output_dir, f"{base_name}_final_annotation.vcf")
+        results_subdir = os.path.join(output_dir, f"{base_name}_results")
+        os.makedirs(results_subdir, exist_ok=True)
+
+        # Define all output file paths within the results subdirectory
+        final_output_vcf = os.path.join(results_subdir, f"{base_name}_final_annotation.vcf")
+        filtered_rsids_vcf = os.path.join(results_subdir, f"{base_name}_filtered_rsids.vcf")
+        no_rsids_vcf = os.path.join(results_subdir, f"{base_name}_no_rsids.vcf")
+        significant_rsids_vcf = os.path.join(results_subdir, f"{base_name}_significant_rsids.vcf")
+        summary_report = os.path.join(results_subdir, f"summary_report_for_{base_name}.txt")
 
         email = self.email_edit.text()
 
-        command = f"python test3.py --input_vcf \"{input_vcf}\" --output_dir \"{output_dir}\" --type {modification_type} --email \"{email}\""
+        # Build the command string for display
+        command = f"python rsID_retrieval.py --input_vcf \"{input_vcf}\" --output_dir \"{results_subdir}\" --type {modification_type} --email \"{email}\""
         if modification_type == "CES1P1-CES1":
             command += f" --pos_modifier {pos_modifier}"
-        if save_temp_files:
-            command += " --save_temp_files"
+
 
         self.command_display.setText(command)
         try:
+            # Modify VCF based on the selected type
             if modification_type == "CES1P1-CES1":
-                modify_vcf_ces1p1_ces1(input_vcf, modified_vcf, pos_modifier)
+                modify_vcf_ces1p1_ces1(input_vcf, no_rsids_vcf, pos_modifier)
             elif modification_type == "CES1A2-CES1":
-                modify_vcf_ces1a2_ces1(input_vcf, modified_vcf)
+                modify_vcf_ces1a2_ces1(input_vcf, no_rsids_vcf)
 
-            clean_vcf(modified_vcf, cleaned_vcf)
-            annotate_vcf_with_ncbi(cleaned_vcf, final_output_vcf, self.update_progress)
+            # Clean the modified VCF
+            clean_vcf(no_rsids_vcf, no_rsids_vcf)  # Saving over itself as it's already cleaned
 
-            if not save_temp_files:
-                os.remove(modified_vcf)
-                os.remove(cleaned_vcf)
+            # Annotate VCF with all rsIDs
+            annotate_vcf_with_ncbi(no_rsids_vcf, final_output_vcf, self.update_progress)
 
-            QMessageBox.information(self, "Success", "VCF file processed successfully.")
+            # Filter to include only rsIDs
+            filter_rsids_vcf(final_output_vcf, filtered_rsids_vcf)
+
+            # Filter significant rsIDs
+            filter_significant_rsids(filtered_rsids_vcf, significant_rsids_vcf)
+
+            # Generate summary report
+            generate_summary_report(final_output_vcf, summary_report)
+
+            QMessageBox.information(self, "Success", f"VCF files processed successfully. Summary report saved to {summary_report}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred: {e}")
 
@@ -275,41 +422,58 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Modify, clean, and annotate a VCF file.")
     parser.add_argument("--input_vcf", type=str, help="Path to the input VCF file")
-    parser.add_argument("--output_dir", type=str, help="Path to save the final annotated VCF file")
-    parser.add_argument("--email", type=str, help="email required by Entrez to initialize the search process")
+    parser.add_argument("--output_dir", type=str, help="Path to save the final annotated VCF files")
+    parser.add_argument("--email", type=str, help="Email required by Entrez to initialize the search process")
     parser.add_argument("--type", type=str, choices=["CES1P1-CES1", "CES1A2-CES1"], help="Type of position modification")
     parser.add_argument("--pos_modifier", type=int, default=55758218, help="Value to add to each POS entry (only for CES1P1-CES1)")
-    parser.add_argument("--save_temp_files", action='store_true', help="Save temporary files")
 
     args = parser.parse_args()
 
     if len(sys.argv) > 1:
-        if args.input_vcf and args.output_dir and args.type:
+        if args.input_vcf and args.output_dir and args.type and args.email:
             input_vcf = args.input_vcf
             output_dir = args.output_dir
             modification_type = args.type
             pos_modifier = args.pos_modifier
-            save_temp_files = args.save_temp_files
+            email = args.email
             base_name = os.path.splitext(os.path.basename(input_vcf))[0]
-            modified_vcf = os.path.join(output_dir,f"{base_name}modified.vcf")
-            cleaned_vcf = os.path.join(output_dir,f"{base_name}cleaned.vcf")
-            final_output_vcf = os.path.join(output_dir,f"{base_name}_final_annotation.vcf")# quick fix around TODO: make base name a global variable instead of defining it in multiple places   
+            results_subdir = os.path.join(output_dir, f"{base_name}_results")
+            os.makedirs(results_subdir, exist_ok=True)
 
-            if modification_type == "CES1P1-CES1":
-                modify_vcf_ces1p1_ces1(input_vcf, modified_vcf, pos_modifier)
-            elif modification_type == "CES1A2-CES1":
-                modify_vcf_ces1a2_ces1(input_vcf, modified_vcf)
+            # Define all output file paths within the results subdirectory
+            final_output_vcf = os.path.join(results_subdir, f"{base_name}_final_annotation.vcf")
+            filtered_rsids_vcf = os.path.join(results_subdir, f"{base_name}_filtered_rsids.vcf")
+            no_rsids_vcf = os.path.join(results_subdir, f"{base_name}_no_rsids.vcf")
+            significant_rsids_vcf = os.path.join(results_subdir, f"{base_name}_significant_rsids.vcf")
+            summary_report_path = os.path.join(results_subdir, f"summary_report_for_{base_name}.txt")
 
-            clean_vcf(modified_vcf, cleaned_vcf)
-            def dummy_progress_callback(value):
-                pass
-            annotate_vcf_with_ncbi(cleaned_vcf, final_output_vcf,dummy_progress_callback)
+            try:
+                # Modify VCF based on the selected type
+                if modification_type == "CES1P1-CES1":
+                    modify_vcf_ces1p1_ces1(input_vcf, no_rsids_vcf, pos_modifier)
+                elif modification_type == "CES1A2-CES1":
+                    modify_vcf_ces1a2_ces1(input_vcf, no_rsids_vcf)
 
-            if not save_temp_files:
-                os.remove(modified_vcf)
-                os.remove(cleaned_vcf)
+                # Clean the modified VCF
+                clean_vcf(no_rsids_vcf, no_rsids_vcf)  # Saving over itself as it's already cleaned
 
-            print("VCF file processed successfully.")
+                # Annotate VCF with all rsIDs
+                annotate_vcf_with_ncbi(no_rsids_vcf, final_output_vcf, lambda x: None)  # No progress in CLI
+
+                # Filter to include only rsIDs
+                filter_rsids_vcf(final_output_vcf, filtered_rsids_vcf)
+
+                # Filter significant rsIDs
+                filter_significant_rsids(filtered_rsids_vcf, significant_rsids_vcf)
+
+                # Generate summary report
+                generate_summary_report(final_output_vcf, summary_report_path)
+
+                
+                print("VCF files processed successfully.")
+                print(f"Summary report saved to {summary_report_path}")
+            except Exception as e:
+                print(f"An error occurred: {e}")
         else:
             print("Error: Missing required arguments for command-line mode.")
             parser.print_help()

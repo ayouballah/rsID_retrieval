@@ -15,7 +15,7 @@ RUN apt-get update && \
 WORKDIR /app
 
 # Copy requirements.txt and install Python dependencies
-COPY requirements.txt .
+COPY requirements_no_pyqt.txt .
 
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt

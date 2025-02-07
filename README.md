@@ -16,8 +16,7 @@
 - [Contributing](#contributing)
 - [License](#license)
 ## Overview
-
-**rsID Retrieval** is a Python-based tool designed to process Variant Call Format (VCF) files harnest from nanopore sequencing for chromosome 16 by modifying positional information, cleaning data by removing columns that are deemed unnecessary by my team, annotating with rsIDs from the NCBI Entrez database, filtering significant entries, and generating comprehensive summary reports. It offers a user-friendly Graphical User Interface (GUI) built with PyQt6 and a versatile Command-Line Interface (CLI) for flexible usage scenarios.
+**rsID Retrieval** is a Python-based tool designed for targeted sequencing analysis, specifically processing Variant Call Format (VCF) files obtained from nanopore sequencing of chromosome 16. It modifies positional information, removes unnecessary columns, and annotates variants with rsIDs from the NCBI variations and Entrez database. The tool is particularly helpful for targeted reads studies, enabling  the identification of synonymous variants. It also filters significant entries and generates comprehensive summary reports. With a user-friendly Graphical User Interface (GUI) built with PyQt6 and a versatile Command-Line Interface (CLI), it offers flexible usability for diverse research needs.
 
 ## Features
 

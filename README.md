@@ -1,5 +1,6 @@
 # rsID Retrieval
-
+> The Docker link is underwork (I need to adjust the packages that support the GUI implementation) same for the VM
+> The current workaround revolves around pulling the Github repo and using it directly
 ## Table of Contents
 - [Overview](#overview)
 - [Features](#features)

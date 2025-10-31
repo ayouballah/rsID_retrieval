@@ -7,15 +7,14 @@ import os
 import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from rsID_retrieval import fetch_rsid_entrez
-from Bio import Entrez
+from core.entrez_api import fetch_rsid_entrez, setup_entrez
 
 def test_performance():
     """Test performance of rsID lookup"""
     print("Testing performance with multiple positions...")
     
     # Set email for Entrez
-    Entrez.email = "test@example.com"
+    setup_entrez("test@example.com")
     
     # Test positions
     test_positions = [

@@ -1,0 +1,55 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation (not needed in container)
+docs/
+examples/
+*.md
+!requirements*.txt
+
+# GUI files (not needed for CLI-only container)
+gui.py
+sandbox_gui.py
+unified_gui.py
+
+# Config files (user-specific)
+config.json
+
+# Test output
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Data files
+*.vcf
+*.txt
+!requirements*.txt
+
+# OS specific
+.DS_Store
+Thumbs.db

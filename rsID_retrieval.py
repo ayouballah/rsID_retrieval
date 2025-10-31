@@ -26,7 +26,75 @@ def save_config(config):
     with open(CONFIG_FILE, 'w') as file:
         json.dump(config, file)
 
+def validate_vcf_file(vcf_path):
+    """
+    Validate VCF file format and structure.
+    Returns (is_valid, error_message).
+    """
+    if not os.path.exists(vcf_path):
+        return False, f"File does not exist: {vcf_path}"
+    
+    if not vcf_path.lower().endswith('.vcf'):
+        return False, "File must have .vcf extension"
+    
+    try:
+        with open(vcf_path, 'r') as file:
+            lines = file.readlines()
+        
+        if not lines:
+            return False, "VCF file is empty"
+        
+        # Find header lines and column header
+        header_lines = [line for line in lines if line.startswith('##')]
+        
+        # Find the column header line (starts with #CHROM)
+        column_header_line = None
+        for i, line in enumerate(lines):
+            if line.startswith('#CHROM'):
+                column_header_line = line
+                break
+        
+        if not column_header_line:
+            return False, "VCF file missing column header line (#CHROM)"
+        
+        # Validate minimum required columns
+        columns = column_header_line.strip().split('\t')
+        required_columns = ['#CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER']
+        
+        for req_col in required_columns:
+            if req_col not in columns:
+                return False, f"Missing required column: {req_col}"
+        
+        # Check if there's at least one data line
+        data_start_idx = len(header_lines) + 1
+        if len(lines) <= data_start_idx:
+            return False, "VCF file has no data rows"
+        
+        # Validate first few data lines for basic format
+        for i in range(min(3, len(lines) - data_start_idx)):
+            data_line = lines[data_start_idx + i].strip()
+            if data_line:  # Skip empty lines
+                data_parts = data_line.split('\t')
+                if len(data_parts) < len(required_columns):
+                    return False, f"Data row {i+1} has insufficient columns ({len(data_parts)} < {len(required_columns)})"
+                
+                # Validate POS is numeric
+                try:
+                    int(data_parts[1])  # POS column
+                except ValueError:
+                    return False, f"Data row {i+1}: POS column must be numeric, got '{data_parts[1]}'"
+        
+        return True, "VCF file is valid"
+        
+    except Exception as e:
+        return False, f"Error reading VCF file: {str(e)}"
+
 def modify_vcf_ces1p1_ces1(input_vcf, output_vcf, pos_modifier=55758218):
+    # Validate input VCF file
+    is_valid, error_msg = validate_vcf_file(input_vcf)
+    if not is_valid:
+        raise ValueError(f"Invalid input VCF file: {error_msg}")
+    
     with open(input_vcf, 'r') as file:
         lines = file.readlines()
         header_lines = [line for line in lines if line.startswith('##')]
@@ -62,6 +130,11 @@ def modify_vcf_ces1a2_ces1(input_vcf, output_vcf):
     Returns:
         None
     """
+    # Validate input VCF file
+    is_valid, error_msg = validate_vcf_file(input_vcf)
+    if not is_valid:
+        raise ValueError(f"Invalid input VCF file: {error_msg}")
+    
     # Position modification constants for CES1A2-CES1 mapping
     LOW_POS_THRESHOLD = 2358
     HIGH_POS_THRESHOLD = 32634
@@ -294,8 +367,10 @@ def annotate_vcf_with_entrez(input_vcf_path, final_output_vcf_path, progress_cal
         
         if is_cli_mode:
             # Use tqdm for command line interface showing variants instead of batches
+            # Robust progress bar format with proper escaping and validation
+            bar_format = '{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} variants [{elapsed}<{remaining}, {rate_fmt}]'
             progress_bar = tqdm(total=total_rows, desc="Annotating variants", 
-                              unit="variant", bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} variants [{elapsed}<{remaining}, {rate_fmt}]',
+                              unit="variant", bar_format=bar_format,
                               leave=True)
         
         # Process batches in parallel with optimized worker count (balanced)
@@ -631,10 +706,40 @@ class MainWindow(QMainWindow):
         input_vcf = self.input_vcf_edit.text()
         output_dir = self.output_dir_edit.text()
         modification_type = self.type_combo.currentText()
-        pos_modifier = int(self.pos_modifier_edit.text())
-
+        
+        # Input validation
         if not input_vcf or not output_dir:
             QMessageBox.warning(self, "Input Error", "Please specify both input VCF file and output directory.")
+            return
+        
+        # Validate email
+        email = self.email_edit.text().strip()
+        if not email or '@' not in email:
+            QMessageBox.warning(self, "Input Error", "Please enter a valid email address for Entrez API.")
+            return
+        
+        # Validate VCF file
+        is_valid, error_msg = validate_vcf_file(input_vcf)
+        if not is_valid:
+            QMessageBox.critical(self, "VCF Validation Error", f"Invalid VCF file:\n{error_msg}")
+            return
+        
+        # Validate output directory
+        if not os.path.exists(output_dir):
+            try:
+                os.makedirs(output_dir, exist_ok=True)
+            except Exception as e:
+                QMessageBox.critical(self, "Directory Error", f"Cannot create output directory:\n{str(e)}")
+                return
+        
+        # Validate position modifier for CES1P1-CES1
+        try:
+            pos_modifier = int(self.pos_modifier_edit.text())
+            if pos_modifier <= 0:
+                QMessageBox.warning(self, "Input Error", "Position modifier must be a positive integer.")
+                return
+        except ValueError:
+            QMessageBox.warning(self, "Input Error", "Position modifier must be a valid integer.")
             return
 
         base_name = os.path.splitext(os.path.basename(input_vcf))[0]
@@ -702,6 +807,32 @@ if __name__ == "__main__":
             modification_type = args.type
             pos_modifier = args.pos_modifier
             email = args.email
+            
+            # Validate command-line inputs
+            # Validate email
+            if not email.strip() or '@' not in email:
+                print("Error: Please provide a valid email address for Entrez API.")
+                sys.exit(1)
+            
+            # Validate VCF file
+            is_valid, error_msg = validate_vcf_file(input_vcf)
+            if not is_valid:
+                print(f"Error: Invalid VCF file - {error_msg}")
+                sys.exit(1)
+            
+            # Validate output directory
+            if not os.path.exists(output_dir):
+                try:
+                    os.makedirs(output_dir, exist_ok=True)
+                except Exception as e:
+                    print(f"Error: Cannot create output directory - {str(e)}")
+                    sys.exit(1)
+            
+            # Validate position modifier
+            if modification_type == "CES1P1-CES1" and pos_modifier <= 0:
+                print("Error: Position modifier must be a positive integer.")
+                sys.exit(1)
+            
             base_name = os.path.splitext(os.path.basename(input_vcf))[0]
             results_subdir = os.path.join(output_dir, f"{base_name}_results")
             os.makedirs(results_subdir, exist_ok=True)

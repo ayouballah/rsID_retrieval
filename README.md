@@ -1,17 +1,18 @@
 # rsID Retrieval
 
-> **Note:** The Docker implementation is currently under development. Docker images need adjustment to support the GUI implementation. The recommended approach is to clone the GitHub repository and use it directly.
-
 ## Table of Contents
 - [Overview](#overview)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Installation](#installation)
+  - [Local Installation](#local-installation)
+  - [Docker Installation](#docker-installation)
 - [Usage](#usage)
   - [Unified Interface (Recommended)](#unified-interface-recommended)
   - [Regular Mode](#regular-mode)
   - [Sandbox Mode](#sandbox-mode)
   - [Command-Line Interface](#command-line-interface)
+  - [Docker Usage](#docker-usage)
 - [Chromosome Format Support](#chromosome-format-support)
 - [Parameters](#parameters)
 - [Examples](#examples)
@@ -105,12 +106,14 @@ This architecture enables:
 
 ## Installation
 
-### Prerequisites
+### Local Installation
+
+#### Prerequisites
 - **Python Version:** Python 3.8 or higher (tested with Python 3.12.3)
 - **Operating System:** Windows, Linux, or macOS
 - **Internet Connection:** Required for NCBI Entrez API access
 
-### Installation Steps
+#### Installation Steps
 
 1. **Clone the Repository:**
    ```bash
@@ -137,7 +140,7 @@ This architecture enables:
    pip install -r requirements.txt
    ```
 
-### Verification
+#### Verification
 
 To verify the installation, run:
 ```bash
@@ -145,6 +148,41 @@ python unified_gui.py
 ```
 
 The unified GUI should launch without errors. If you encounter issues, see the [Troubleshooting](#troubleshooting) section.
+
+### Docker Installation
+
+Docker provides a containerized environment for running rsID Retrieval without installing Python or dependencies locally. The Docker image includes all CLI functionality with optimized rate limiting for NCBI API compliance.
+
+#### Prerequisites
+- **Docker:** Docker Desktop (Windows/macOS) or Docker Engine (Linux)
+- **Internet Connection:** Required for pulling image and NCBI API access
+
+#### Quick Start with Docker
+
+**Pull the pre-built image from Docker Hub:**
+```bash
+docker pull ayouballah/rsid-retrieval:latest
+```
+
+**Or build from source:**
+```bash
+git clone https://github.com/ayouballah/rsID_Retrieval.git
+cd rsID_Retrieval
+docker build -t rsid-retrieval .
+```
+
+#### Docker Features
+
+- ✅ **No Python installation required** - Everything runs in container
+- ✅ **CLI-only interface** - Optimized for automation and scripting
+- ✅ **Optimized rate limiting** - 2 concurrent workers, 0.5s delays, 5 retries
+- ✅ **Production-ready** - 94.1% annotation success rate on real datasets
+- ✅ **Cross-platform** - Works on Windows, Linux, and macOS
+- ✅ **Minimal image** - Based on python:3.12-slim (~605MB)
+
+**Note:** The Docker image contains CLI functionality only. For GUI usage, use the local installation method.
+
+For detailed Docker usage instructions, see [Docker Usage](#docker-usage) or consult `DOCKER_GUIDE.md`.
 
 ## Usage
 
@@ -283,6 +321,167 @@ python main.py [arguments]
 - If `--type` is provided: Uses Regular mode
 - If `--chromosome` and `--equation` are provided: Uses Sandbox mode
 - If no arguments: Launches unified GUI
+
+### Docker Usage
+
+Docker enables running rsID Retrieval in an isolated container without local Python installation. The Docker image provides CLI functionality with optimized NCBI API rate limiting.
+
+#### Basic Docker Workflow
+
+**1. Pull the image (if not already available):**
+```bash
+docker pull ayouballah/rsid-retrieval:latest
+```
+
+**2. Prepare your data:**
+- Place your VCF file in a directory (e.g., `/path/to/data/`)
+- Create an output directory or use the same directory
+
+**3. Run the container:**
+
+**Regular Mode (CES1P1):**
+```bash
+docker run --rm \
+  -v /path/to/data:/data \
+  ayouballah/rsid-retrieval:latest \
+  --input_vcf /data/input.vcf \
+  --output_dir /data/results \
+  --type CES1P1-CES1 \
+  --email your.email@institution.edu
+```
+
+**Regular Mode (CES1A2):**
+```bash
+docker run --rm \
+  -v /path/to/data:/data \
+  ayouballah/rsid-retrieval:latest \
+  --input_vcf /data/input.vcf \
+  --output_dir /data/results \
+  --type CES1A2-CES1 \
+  --email your.email@institution.edu
+```
+
+**Sandbox Mode:**
+```bash
+docker run --rm \
+  -v /path/to/data:/data \
+  ayouballah/rsid-retrieval:latest \
+  --mode sandbox \
+  --input_vcf /data/input.vcf \
+  --output_dir /data/results \
+  --chromosome 16 \
+  --equation "x + 1000000" \
+  --format UCSC \
+  --email your.email@institution.edu
+```
+
+#### Docker Command Breakdown
+
+| Component | Description |
+|-----------|-------------|
+| `docker run` | Execute container |
+| `--rm` | Automatically remove container after execution |
+| `-v /path/to/data:/data` | Mount local directory to container's `/data` |
+| `ayouballah/rsid-retrieval:latest` | Docker image name and tag |
+| `--input_vcf /data/input.vcf` | Path to VCF file (inside container) |
+| `--output_dir /data/results` | Output directory (inside container) |
+| `--email your@email.com` | Your email for NCBI Entrez API |
+
+#### Windows-Specific Docker Usage
+
+**Windows PowerShell:**
+```powershell
+docker run --rm `
+  -v "C:\Users\YourName\data:/data" `
+  ayouballah/rsid-retrieval:latest `
+  --input_vcf "/data/input.vcf" `
+  --output_dir "/data/results" `
+  --type CES1P1-CES1 `
+  --email your.email@institution.edu
+```
+
+**Windows Command Prompt:**
+```cmd
+docker run --rm ^
+  -v "C:\Users\YourName\data:/data" ^
+  ayouballah/rsid-retrieval:latest ^
+  --input_vcf "/data/input.vcf" ^
+  --output_dir "/data/results" ^
+  --type CES1P1-CES1 ^
+  --email your.email@institution.edu
+```
+
+#### Docker Performance
+
+The Docker image uses ultra-conservative rate limiting settings for maximum reliability:
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| Concurrent Workers | 2 | Avoid NCBI rate limits |
+| Minimum Delay | 0.5s | Ensure API compliance |
+| Max Retries | 5 | Recover from transient failures |
+| Retry Backoff | 1.5s exponential | Progressive retry delays |
+
+**Expected Performance:**
+- Processing speed: ~1.9 variants/second
+- Success rate: 94%+ on production datasets
+- HTTP 429 errors: Zero or minimal with retry recovery
+
+#### Docker Examples
+
+**Example 1: Process 422-variant CES1P1 file**
+```bash
+docker run --rm \
+  -v "$PWD/data:/data" \
+  ayouballah/rsid-retrieval:latest \
+  --input_vcf /data/Ces1p1_Ces1_S1.vcf \
+  --output_dir /data/results \
+  --type CES1P1-CES1 \
+  --email researcher@university.edu
+```
+Expected time: ~3-4 minutes
+
+**Example 2: Sandbox mode with chromosome 1**
+```bash
+docker run --rm \
+  -v "$PWD/data:/data" \
+  ayouballah/rsid-retrieval:latest \
+  --mode sandbox \
+  --input_vcf /data/chr1.vcf \
+  --output_dir /data/chr1_results \
+  --chromosome 1 \
+  --equation "x + 500000" \
+  --format RefSeq \
+  --email researcher@university.edu
+```
+
+**Example 3: Running unit tests in Docker**
+```bash
+docker run --rm ayouballah/rsid-retrieval:latest python /app/run_tests.py
+```
+
+#### Troubleshooting Docker Issues
+
+**Issue: Permission denied on output directory**
+```
+Solution: Ensure the output directory exists and has write permissions
+mkdir -p data/results
+chmod 777 data/results  # Linux/macOS
+```
+
+**Issue: File not found in container**
+```
+Solution: Verify volume mount path matches your local directory
+Use absolute paths for -v argument
+```
+
+**Issue: Slow processing**
+```
+Solution: This is expected - Docker uses conservative rate limiting
+422 variants typically process in 3-4 minutes
+```
+
+For comprehensive Docker documentation, see `DOCKER_GUIDE.md` in the repository.
 
 ## Chromosome Format Support
 

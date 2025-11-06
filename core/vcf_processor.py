@@ -148,6 +148,7 @@ def modify_vcf_ces1a2_ces1(input_vcf, output_vcf):
 def clean_vcf(input_vcf, output_vcf):
     """
     Clean a VCF file by selecting specific columns and ensuring proper chromosome format.
+    Handles both 8-column (standard) and 10-column (with FORMAT/SAMPLE) VCF files.
     """
     try:
         # Read the VCF file preserving header information
@@ -155,21 +156,38 @@ def clean_vcf(input_vcf, output_vcf):
             lines = file.readlines()
             header_lines = [line for line in lines if line.startswith('##')]
         
-        # Read data section
+        # Read data section and determine number of columns
         vcf = pd.read_csv(input_vcf, comment='#', sep='\t', header=None, dtype=str)
-        vcf.columns = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO', 'FORMAT', 'SAMPLE']
+        num_cols = vcf.shape[1]
         
-        # Select required columns
-        vcf_cleaned = vcf[['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'SAMPLE']].copy()
+        # Handle different VCF column formats
+        if num_cols == 8:
+            # Standard 8-column VCF (no FORMAT/SAMPLE columns)
+            vcf.columns = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO']
+            # Select required columns and add empty SAMPLE column for consistency
+            vcf_cleaned = vcf[['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL']].copy()
+            vcf_cleaned['SAMPLE'] = ''
+        elif num_cols == 10:
+            # 10-column VCF with FORMAT and SAMPLE
+            vcf.columns = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO', 'FORMAT', 'SAMPLE']
+            vcf_cleaned = vcf[['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'SAMPLE']].copy()
+        else:
+            # Try to handle other column counts flexibly
+            base_cols = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO']
+            extra_cols = [f'COL{i}' for i in range(num_cols - len(base_cols))]
+            vcf.columns = base_cols + extra_cols
+            vcf_cleaned = vcf[['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL']].copy()
+            # Use last column as SAMPLE if available, otherwise empty
+            vcf_cleaned['SAMPLE'] = vcf.iloc[:, -1] if num_cols > 8 else ''
         
-        # Ensure proper chromosome format for NCBI API
-        vcf_cleaned['CHROM'] = 'NC_000016.10'  # Use the current RefSeq accession for chr16
+        # Extract chromosome from first row (don't hardcode NC_000016.10)
+        first_chrom = vcf_cleaned['CHROM'].iloc[0]
         
         # Write the cleaned VCF with proper headers
         with open(output_vcf, 'w', encoding='utf-8') as outfile:
             # Write VCF format header
             outfile.write("##fileformat=VCFv4.2\n")
-            outfile.write("##contig=<ID=NC_000016.10,length=90354753>\n")
+            outfile.write(f"##contig=<ID={first_chrom}>\n")
             outfile.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tSAMPLE\n")
             
             # Write data
@@ -178,64 +196,83 @@ def clean_vcf(input_vcf, output_vcf):
         return f"Cleaned VCF file saved to {output_vcf}"
         
     except Exception as e:
-        # Fallback to original method if new method fails
-        try:
-            vcf = pd.read_csv(input_vcf, comment='#', sep='\t', header=None, dtype=str)
-            vcf.columns = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO', 'FORMAT', 'SAMPLE']
-            vcf_cleaned = vcf[['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'SAMPLE']]
-            vcf_cleaned['CHROM'] = 'NC_000016.10'
-            vcf_cleaned.to_csv(output_vcf, sep='\t', index=False, header=False)
-            return f"Cleaned VCF file saved to {output_vcf} (fallback method)"
-        except Exception as e2:
-            raise Exception(f"Both cleaning methods failed: {e2}")
+        raise Exception(f"VCF cleaning failed: {str(e)}")
 
 
 def filter_rsids_vcf(final_output_vcf, filtered_rsids_vcf):
     """
     Filters the final annotated VCF to include only entries with rsIDs.
+    Handles empty files gracefully.
     """
-    vcf = pd.read_csv(final_output_vcf, comment='#', sep='\t', header=None, dtype=str)
-    vcf.columns = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'SAMPLE']
-    
-    # Filter entries where ID starts with 'rs'
-    filtered_vcf = vcf[vcf['ID'].str.startswith('rs')]
-    
-    # Write clean VCF without extra columns
-    with open(filtered_rsids_vcf, 'w', encoding='utf-8') as output:
-        for _, row in filtered_vcf.iterrows():
-            line_data = [str(row['CHROM']), str(row['POS']), str(row['ID']), 
-                       str(row['REF']), str(row['ALT']), str(row['QUAL']), str(row['SAMPLE'])]
-            output.write('\t'.join(line_data) + '\n')
-    
-    return f"Found {len(filtered_vcf)} variants with rsIDs out of {len(vcf)} total variants"
+    try:
+        vcf = pd.read_csv(final_output_vcf, comment='#', sep='\t', header=None, dtype=str)
+        
+        # Handle empty file
+        if vcf.empty:
+            with open(filtered_rsids_vcf, 'w', encoding='utf-8') as output:
+                output.write("")  # Create empty file
+            return "No variants found in annotated VCF"
+        
+        vcf.columns = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'SAMPLE']
+        
+        # Filter entries where ID starts with 'rs'
+        filtered_vcf = vcf[vcf['ID'].str.startswith('rs', na=False)]
+        
+        # Write clean VCF without extra columns
+        with open(filtered_rsids_vcf, 'w', encoding='utf-8') as output:
+            for _, row in filtered_vcf.iterrows():
+                line_data = [str(row['CHROM']), str(row['POS']), str(row['ID']), 
+                           str(row['REF']), str(row['ALT']), str(row['QUAL']), str(row['SAMPLE'])]
+                output.write('\t'.join(line_data) + '\n')
+        
+        return f"Found {len(filtered_vcf)} variants with rsIDs out of {len(vcf)} total variants"
+    except pd.errors.EmptyDataError:
+        # Handle completely empty file
+        with open(filtered_rsids_vcf, 'w', encoding='utf-8') as output:
+            output.write("")
+        return "No variants found in annotated VCF"
 
 
 def filter_significant_rsids(filtered_rsids_vcf, significant_rsids_vcf, qual_threshold=20.0):
     """
     Filters the filtered rsIDs VCF to include only entries with QUAL >= qual_threshold.
+    Handles missing QUAL values (represented as '.') gracefully.
     """
-    vcf = pd.read_csv(filtered_rsids_vcf, comment='#', sep='\t', header=None, dtype=str)
-    vcf.columns = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'SAMPLE']
-    
-    # Convert QUAL to float for comparison
-    vcf['QUAL'] = vcf['QUAL'].astype(float)
-    
-    # Filter based on QUAL score
-    significant_vcf = vcf[vcf['QUAL'] >= qual_threshold]
-    
-    # Write clean VCF without extra columns
-    with open(significant_rsids_vcf, 'w', encoding='utf-8') as output:
-        for _, row in significant_vcf.iterrows():
-            line_data = [str(row['CHROM']), str(row['POS']), str(row['ID']), 
-                       str(row['REF']), str(row['ALT']), str(row['QUAL']), str(row['SAMPLE'])]
-            output.write('\t'.join(line_data) + '\n')
-    
-    return f"Found {len(significant_vcf)} high-quality variants out of {len(vcf)} variants with rsIDs"
+    try:
+        vcf = pd.read_csv(filtered_rsids_vcf, comment='#', sep='\t', header=None, dtype=str)
+        
+        # Handle empty file
+        if vcf.empty:
+            with open(significant_rsids_vcf, 'w', encoding='utf-8') as output:
+                output.write("")
+            return "No variants with rsIDs found"
+        
+        vcf.columns = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'SAMPLE']
+        
+        # Convert QUAL to float, treating '.' as NaN
+        vcf['QUAL_NUMERIC'] = pd.to_numeric(vcf['QUAL'], errors='coerce')
+        
+        # Filter based on QUAL score (only where QUAL is not NaN and >= threshold)
+        significant_vcf = vcf[vcf['QUAL_NUMERIC'] >= qual_threshold]
+        
+        # Write clean VCF without extra columns
+        with open(significant_rsids_vcf, 'w', encoding='utf-8') as output:
+            for _, row in significant_vcf.iterrows():
+                line_data = [str(row['CHROM']), str(row['POS']), str(row['ID']), 
+                           str(row['REF']), str(row['ALT']), str(row['QUAL']), str(row['SAMPLE'])]
+                output.write('\t'.join(line_data) + '\n')
+        
+        return f"Found {len(significant_vcf)} high-quality variants out of {len(vcf)} variants with rsIDs"
+    except pd.errors.EmptyDataError:
+        with open(significant_rsids_vcf, 'w', encoding='utf-8') as output:
+            output.write("")
+        return "No variants with rsIDs found"
 
 
 def generate_summary_report(final_output_vcf, summary_report_path):
     """
     Generates a summary report based on the final annotated VCF file.
+    Handles missing QUAL values (represented as '.') gracefully.
     """
     vcf = pd.read_csv(final_output_vcf, comment='#', sep='\t', header=None, dtype=str)
     base_name = os.path.splitext(os.path.basename(final_output_vcf))[0].replace("_final_annotation", "")
@@ -243,11 +280,12 @@ def generate_summary_report(final_output_vcf, summary_report_path):
     total_variants = vcf.shape[0]
     
     # rsID is in the 3rd column (index 2)
-    with_rsid = vcf[vcf[2].str.startswith('rs')].shape[0]
+    with_rsid = vcf[vcf[2].str.startswith('rs', na=False)].shape[0]
     without_rsid = total_variants - with_rsid
     
-    # Quality is in the 6th column (index 5)
-    reliable_variants = vcf[(vcf[2].str.startswith('rs')) & (vcf[5].astype(float) >= 20)].shape[0]
+    # Quality is in the 6th column (index 5) - convert to numeric, treating '.' as NaN
+    vcf_qual_numeric = pd.to_numeric(vcf[5], errors='coerce')
+    reliable_variants = vcf[(vcf[2].str.startswith('rs', na=False)) & (vcf_qual_numeric >= 20)].shape[0]
 
     # Write the summary to the report file
     with open(summary_report_path, 'w', encoding='utf-8') as report_file:

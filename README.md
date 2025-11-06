@@ -173,12 +173,12 @@ docker build -t rsid-retrieval .
 
 #### Docker Features
 
-- ✅ **No Python installation required** - Everything runs in container
-- ✅ **CLI-only interface** - Optimized for automation and scripting
-- ✅ **Optimized rate limiting** - 2 concurrent workers, 0.5s delays, 5 retries
-- ✅ **Production-ready** - 94.1% annotation success rate on real datasets
-- ✅ **Cross-platform** - Works on Windows, Linux, and macOS
-- ✅ **Minimal image** - Based on python:3.12-slim (~605MB)
+-  **No Python installation required** - Everything runs in container
+-  **CLI-only interface** - Optimized for automation and scripting
+-  **Optimized rate limiting** - 2 concurrent workers, 0.5s delays, 5 retries
+-  **Production-ready** - 94.1% annotation success rate on real datasets
+-  **Cross-platform** - Works on Windows, Linux, and macOS
+-  **Minimal image** - Based on python:3.12-slim (~605MB)
 
 **Note:** The Docker image contains CLI functionality only. For GUI usage, use the local installation method.
 
@@ -250,7 +250,7 @@ python cli.py --input_vcf <path> --output_dir <path> --email <email> --type <mod
 
 **Example:**
 ```bash
-python cli.py --input_vcf "data/sample.vcf" --output_dir "results" --email "researcher@institution.edu" --type CES1P1-CES1 --pos_modifier 55758218
+python cli.py --input_vcf "data/sample.vcf" --output_dir "results" --email "researcher@domain.com" --type CES1P1-CES1 --pos_modifier 55758218
 ```
 
 ### Sandbox Mode
@@ -305,7 +305,7 @@ python sandbox_cli.py --input_vcf <path> --output_dir <path> --email <email> --c
 
 **Example:**
 ```bash
-python sandbox_cli.py --input_vcf "data/chr1.vcf" --output_dir "results" --email "researcher@institution.edu" --chromosome "1" --equation "x + 500000" --format "UCSC"
+python sandbox_cli.py --input_vcf "data/chr1.vcf" --output_dir "results" --email "researcher@domain.com" --chromosome "1" --equation "x + 500000" --format "UCSC"
 ```
 
 ### Command-Line Interface
@@ -347,7 +347,7 @@ docker run --rm \
   --input_vcf /data/input.vcf \
   --output_dir /data/results \
   --type CES1P1-CES1 \
-  --email your.email@institution.edu
+  --email your.email@domain.com
 ```
 
 **Regular Mode (CES1A2):**
@@ -358,7 +358,7 @@ docker run --rm \
   --input_vcf /data/input.vcf \
   --output_dir /data/results \
   --type CES1A2-CES1 \
-  --email your.email@institution.edu
+  --email your.email@domain.com
 ```
 
 **Sandbox Mode:**
@@ -372,7 +372,7 @@ docker run --rm \
   --chromosome 16 \
   --equation "x + 1000000" \
   --format UCSC \
-  --email your.email@institution.edu
+  --email your.email@domain.com
 ```
 
 #### Docker Command Breakdown
@@ -397,7 +397,7 @@ docker run --rm `
   --input_vcf "/data/input.vcf" `
   --output_dir "/data/results" `
   --type CES1P1-CES1 `
-  --email your.email@institution.edu
+  --email your.email@domain.com
 ```
 
 **Windows Command Prompt:**
@@ -408,7 +408,7 @@ docker run --rm ^
   --input_vcf "/data/input.vcf" ^
   --output_dir "/data/results" ^
   --type CES1P1-CES1 ^
-  --email your.email@institution.edu
+  --email your.email@domain.com
 ```
 
 #### Docker Performance
@@ -570,7 +570,7 @@ python unified_gui.py
 1. Select "Regular" tab
 2. Browse to input VCF file: `data/ces1p1_sample.vcf`
 3. Select output directory: `results/ces1p1`
-4. Enter email: `researcher@institution.edu`
+4. Enter email: `researcher@domain.com`
 5. Select modification type: `CES1P1-CES1`
 6. Set position modifier: `55758218`
 7. Click "Run"
@@ -581,7 +581,7 @@ python unified_gui.py
 python cli.py \
   --input_vcf "data/ces1p1_sample.vcf" \
   --output_dir "results/ces1p1" \
-  --email "researcher@institution.edu" \
+  --email "researcher@domain.com" \
   --type CES1P1-CES1 \
   --pos_modifier 55758218
 ```
@@ -592,7 +592,7 @@ python cli.py \
 python cli.py \
   --input_vcf "data/ces1a2_sample.vcf" \
   --output_dir "results/ces1a2" \
-  --email "researcher@institution.edu" \
+  --email "researcher@domain.com" \
   --type CES1A2-CES1
 ```
 
@@ -604,7 +604,7 @@ python unified_gui.py
 1. Select "Sandbox" tab
 2. Browse to input VCF file: `data/chr1_sample.vcf`
 3. Select output directory: `results/chr1_custom`
-4. Enter email: `researcher@institution.edu`
+4. Enter email: `researcher@domain.com`
 5. Enter target chromosome: `1` (or `chr1` or `NC_000001.11`)
 6. Select output format: `UCSC`
 7. Enter equation: `x + 500000`
@@ -617,7 +617,7 @@ python unified_gui.py
 python sandbox_cli.py \
   --input_vcf "data/chrX_variants.vcf" \
   --output_dir "results/chrX_analysis" \
-  --email "researcher@institution.edu" \
+  --email "researcher@domain.com" \
   --chromosome "X" \
   --equation "x + 1000000" \
   --format "RefSeq"
@@ -629,7 +629,7 @@ python sandbox_cli.py \
 python sandbox_cli.py \
   --input_vcf "data/sample.vcf" \
   --output_dir "results/format_conversion" \
-  --email "researcher@institution.edu" \
+  --email "researcher@domain.com" \
   --chromosome "NC_000022.11" \
   --equation "x" \
   --format "UCSC"
@@ -687,7 +687,7 @@ The `config.json` file is automatically created in the application directory on 
 
 ```json
 {
-  "email": "your_email@institution.edu"
+  "email": "your_email@domain.com"
 }
 ```
 
@@ -715,7 +715,7 @@ The NCBI Entrez API requires users to provide an email address. This is used by 
 Create or edit `config.json` in the application directory:
 ```json
 {
-  "email": "researcher@institution.edu"
+  "email": "researcher@domain.com"
 }
 ```
 

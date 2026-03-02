@@ -4,9 +4,11 @@ Essential test script to verify Entrez annotation functionality.
 """
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from rsID_retrieval import fetch_rsid_entrez
+# Add parent directory to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from core.entrez_api import fetch_rsid_entrez, setup_entrez
 from Bio import Entrez
 
 def test_entrez_function():

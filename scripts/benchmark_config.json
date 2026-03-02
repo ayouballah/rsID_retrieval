@@ -1,0 +1,24 @@
+{
+  "dbsnp_dir": "/mnt/c/Users/ayoub/Documents/GitHub/rsID_retrieval/dbsnp_temp",
+  "output_dir": "/mnt/c/Users/ayoub/Documents/GitHub/rsID_retrieval/benchmark_results",
+  "vcf_files": [
+    {
+      "name": "Ces1p1",
+      "path": "/mnt/c/Users/ayoub/OneDrive - Universitaet Bern/SS_24/intership summer 2024/Eva's stuff/Ces1p1 Ces1 S1.vcf",
+      "offset": 55758218,
+      "description": "Ces1p1 file requires POS offset: new_pos = old_pos + 55758218"
+    },
+    {
+      "name": "DPYD",
+      "path": "/mnt/c/Users/ayoub/OneDrive - Universitaet Bern/WS_25/project/checked_clinvar/DPYD_DPD22520.vcf",
+      "offset": 0,
+      "description": "DPYD file on chr1, no offset needed"
+    },
+    {
+      "name": "clinvar_chr20",
+      "path": "/mnt/c/Users/ayoub/OneDrive - Universitaet Bern/WS_25/project/clinvar_chr20_test100.vcf",
+      "offset": 0,
+      "description": "Clinvar chr20 subset, no offset needed"
+    }
+  ]
+}

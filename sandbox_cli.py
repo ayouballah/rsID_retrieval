@@ -5,6 +5,14 @@ import sys
 import argparse
 from core.sandbox import SandboxProcessor
 
+# Fix Windows encoding issues when called via subprocess
+if sys.platform == 'win32':
+    import io
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if isinstance(sys.stderr, io.TextIOWrapper):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 
 def main():
     """

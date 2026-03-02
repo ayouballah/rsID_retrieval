@@ -5,7 +5,7 @@ import os
 import pandas as pd
 from core.vcf_processor import validate_vcf_file
 from core.entrez_api import setup_entrez, annotate_vcf_with_entrez
-from core.vcf_processor import clean_vcf, filter_rsids_vcf, filter_significant_rsids, generate_summary_report
+from core.vcf_processor import clean_vcf, filter_rsids_vcf, filter_no_rsids_vcf, filter_significant_rsids, generate_summary_report
 
 
 class SandboxProcessor:
@@ -196,6 +196,7 @@ class SandboxProcessor:
                 'cleaned_vcf': os.path.join(results_subdir, f"{base_name}_cleaned.vcf"),
                 'annotated_vcf': os.path.join(results_subdir, f"{base_name}_annotated.vcf"),
                 'filtered_rsids_vcf': os.path.join(results_subdir, f"{base_name}_with_rsids.vcf"),
+                'no_rsids_vcf': os.path.join(results_subdir, f"{base_name}_no_rsids.vcf"),
                 'significant_rsids_vcf': os.path.join(results_subdir, f"{base_name}_significant.vcf"),
                 'summary_report': os.path.join(results_subdir, f"sandbox_report_{base_name}.txt")
             }
@@ -240,16 +241,23 @@ class SandboxProcessor:
             messages.append(rsid_msg)
             
             if progress_callback:
-                progress_callback(85)
+                progress_callback(80)
             
-            # Step 5: Filter significant rsIDs
+            # Step 5: Filter NORSID (variants without rsIDs)
+            norsid_msg = filter_no_rsids_vcf(files['annotated_vcf'], files['no_rsids_vcf'])
+            messages.append(norsid_msg)
+            
+            if progress_callback:
+                progress_callback(87)
+            
+            # Step 6: Filter significant rsIDs
             sig_msg = filter_significant_rsids(files['filtered_rsids_vcf'], files['significant_rsids_vcf'])
             messages.append(sig_msg)
             
             if progress_callback:
                 progress_callback(95)
             
-            # Step 6: Generate summary report
+            # Step 7: Generate summary report
             summary_data = generate_summary_report(files['annotated_vcf'], files['summary_report'])
             
             # Add sandbox-specific information to summary

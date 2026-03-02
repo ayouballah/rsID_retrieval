@@ -324,23 +324,11 @@ python main.py [arguments]
 
 ### Docker Usage
 
-Docker enables running rsID Retrieval in an isolated container without local Python installation. The Docker image provides CLI functionality with optimized NCBI API rate limiting.
+rsID_retrieval can be run in an isolated container without a local Python installation.
 
-#### Basic Docker Workflow
-
-**1. Pull the image (if not already available):**
 ```bash
 docker pull ayouballah/rsid-retrieval:latest
-```
 
-**2. Prepare your data:**
-- Place your VCF file in a directory (e.g., `/path/to/data/`)
-- Create an output directory or use the same directory
-
-**3. Run the container:**
-
-**Regular Mode (CES1P1):**
-```bash
 docker run --rm \
   -v /path/to/data:/data \
   ayouballah/rsid-retrieval:latest \
@@ -350,138 +338,7 @@ docker run --rm \
   --email your.email@domain.com
 ```
 
-**Regular Mode (CES1A2):**
-```bash
-docker run --rm \
-  -v /path/to/data:/data \
-  ayouballah/rsid-retrieval:latest \
-  --input_vcf /data/input.vcf \
-  --output_dir /data/results \
-  --type CES1A2-CES1 \
-  --email your.email@domain.com
-```
-
-**Sandbox Mode:**
-```bash
-docker run --rm \
-  -v /path/to/data:/data \
-  ayouballah/rsid-retrieval:latest \
-  --mode sandbox \
-  --input_vcf /data/input.vcf \
-  --output_dir /data/results \
-  --chromosome 16 \
-  --equation "x + 1000000" \
-  --format UCSC \
-  --email your.email@domain.com
-```
-
-#### Docker Command Breakdown
-
-| Component | Description |
-|-----------|-------------|
-| `docker run` | Execute container |
-| `--rm` | Automatically remove container after execution |
-| `-v /path/to/data:/data` | Mount local directory to container's `/data` |
-| `ayouballah/rsid-retrieval:latest` | Docker image name and tag |
-| `--input_vcf /data/input.vcf` | Path to VCF file (inside container) |
-| `--output_dir /data/results` | Output directory (inside container) |
-| `--email your@email.com` | Your email for NCBI Entrez API |
-
-#### Windows-Specific Docker Usage
-
-**Windows PowerShell:**
-```powershell
-docker run --rm `
-  -v "C:\Users\YourName\data:/data" `
-  ayouballah/rsid-retrieval:latest `
-  --input_vcf "/data/input.vcf" `
-  --output_dir "/data/results" `
-  --type CES1P1-CES1 `
-  --email your.email@domain.com
-```
-
-**Windows Command Prompt:**
-```cmd
-docker run --rm ^
-  -v "C:\Users\YourName\data:/data" ^
-  ayouballah/rsid-retrieval:latest ^
-  --input_vcf "/data/input.vcf" ^
-  --output_dir "/data/results" ^
-  --type CES1P1-CES1 ^
-  --email your.email@domain.com
-```
-
-#### Docker Performance
-
-The Docker image uses ultra-conservative rate limiting settings for maximum reliability:
-
-| Setting | Value | Purpose |
-|---------|-------|---------|
-| Concurrent Workers | 2 | Avoid NCBI rate limits |
-| Minimum Delay | 0.5s | Ensure API compliance |
-| Max Retries | 5 | Recover from transient failures |
-| Retry Backoff | 1.5s exponential | Progressive retry delays |
-
-**Expected Performance:**
-- Processing speed: ~1.9 variants/second
-- Success rate: 94%+ on production datasets
-- HTTP 429 errors: Zero or minimal with retry recovery
-
-#### Docker Examples
-
-**Example 1: Process 422-variant CES1P1 file**
-```bash
-docker run --rm \
-  -v "$PWD/data:/data" \
-  ayouballah/rsid-retrieval:latest \
-  --input_vcf /data/Ces1p1_Ces1_S1.vcf \
-  --output_dir /data/results \
-  --type CES1P1-CES1 \
-  --email researcher@university.edu
-```
-Expected time: ~3-4 minutes
-
-**Example 2: Sandbox mode with chromosome 1**
-```bash
-docker run --rm \
-  -v "$PWD/data:/data" \
-  ayouballah/rsid-retrieval:latest \
-  --mode sandbox \
-  --input_vcf /data/chr1.vcf \
-  --output_dir /data/chr1_results \
-  --chromosome 1 \
-  --equation "x + 500000" \
-  --format RefSeq \
-  --email researcher@university.edu
-```
-
-**Example 3: Running unit tests in Docker**
-```bash
-docker run --rm ayouballah/rsid-retrieval:latest python /app/run_tests.py
-```
-
-#### Troubleshooting Docker Issues
-
-**Issue: Permission denied on output directory**
-```
-Solution: Ensure the output directory exists and has write permissions
-mkdir -p data/results
-chmod 777 data/results  # Linux/macOS
-```
-
-**Issue: File not found in container**
-```
-Solution: Verify volume mount path matches your local directory
-Use absolute paths for -v argument
-```
-
-**Issue: Slow processing**
-```
-Solution: This is expected - Docker uses conservative rate limiting
-422 variants typically process in 3-4 minutes
-```
-
-For comprehensive Docker documentation, see `DOCKER_GUIDE.md` in the repository.
+For full Docker documentation including Windows usage, performance settings, and troubleshooting, see [docs/DOCKER_GUIDE.md](docs/DOCKER_GUIDE.md).
 
 ## Chromosome Format Support
 
@@ -855,9 +712,8 @@ Annotation takes longer than expected.
 If you encounter issues not listed here:
 
 1. **Check existing documentation:**
-   - Review relevant guide files (`docs/SANDBOX_GUIDE.md`, `docs/UNIFIED_GUI_GUIDE.md`)
+   - Review relevant guide files in `docs/` (e.g., `docs/SANDBOX_GUIDE.md`, `docs/DOCKER_GUIDE.md`)
    - Check `CHANGELOG.md` for migration guidance
-
 2. **Verify installation:**
    - Ensure Python version >= 3.8
    - Confirm all dependencies are installed

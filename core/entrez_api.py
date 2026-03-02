@@ -4,6 +4,8 @@ NCBI Entrez API integration for rsID retrieval.
 import time
 import threading
 import logging
+import re
+from collections import deque
 from Bio import Entrez
 import concurrent.futures
 import pandas as pd
@@ -15,9 +17,36 @@ logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
-# Global rate limiter for Entrez API calls - very conservative to avoid 429 errors
-_rate_limiter = threading.Semaphore(1)  # Reduced to 1 for maximum compliance with NCBI rate limits
-_last_request_time = threading.local()
+# Smart global rate limiter - ensures exactly 3 requests per second across all threads
+class _SmartRateLimiter:
+    """Rate limiter that tracks request timestamps globally across all threads."""
+    
+    def __init__(self, requests_per_second=3):
+        self.requests_per_second = requests_per_second
+        self.timestamps = deque(maxlen=requests_per_second)
+        self.lock = threading.Lock()
+    
+    def acquire(self):
+        """Wait until it's safe to make another request."""
+        with self.lock:
+            now = time.time()
+            
+            # If we have made requests_per_second requests, check the oldest
+            if len(self.timestamps) >= self.requests_per_second:
+                oldest = self.timestamps[0]
+                time_since_oldest = now - oldest
+                
+                # If less than 1 second has passed since oldest request, wait
+                if time_since_oldest < 1.0:
+                    sleep_time = 1.0 - time_since_oldest
+                    time.sleep(sleep_time)
+                    now = time.time()
+            
+            # Record this request
+            self.timestamps.append(now)
+
+
+_rate_limiter = _SmartRateLimiter(requests_per_second=3)
 
 
 def setup_entrez(email):
@@ -45,66 +74,132 @@ def test_entrez_connection():
         return False, f"Entrez test failed: {e}"
 
 
-def fetch_rsid_entrez(chromosome, position, max_retries=5):
+def _fetch_allele_filtered_rsids(candidate_ids, ref, alt):
+    """
+    Given a list of candidate rsID numbers (strings without 'rs' prefix),
+    fetch their allele info via esummary and return only those matching ref/alt.
+    Falls back to returning all candidates if the filter call fails.
+    """
+    fallback = [f"rs{i}" for i in candidate_ids]
+    try:
+        _rate_limiter.acquire()
+        handle = Entrez.esummary(db="snp", id=",".join(str(i) for i in candidate_ids))
+        records = Entrez.read(handle)
+        handle.close()
+
+        ref_u = ref.upper()
+        alt_u = alt.upper()
+        matching = []
+
+        # BioPython can return a list or a DocumentSummarySet dict depending on version
+        if isinstance(records, list):
+            doc_list = records
+        else:
+            doc_list = records.get("DocumentSummarySet", {}).get("DocumentSummary", [])
+
+        seen = set()
+        for doc in doc_list:
+            try:
+                docsum = str(doc.get("DOCSUM", ""))
+                # SNP_ID may be stored as attribute or key; @uid is the numeric id
+                uid = str(doc.get("SNP_ID", "") or doc.get("@uid", "")).strip()
+            except Exception:
+                continue
+
+            if not uid or uid in seen:
+                continue
+
+            matched = False
+
+            # Primary check: HGVS SNV notation  g.POS{REF}>{ALT}  inside DOCSUM
+            if f"{ref_u}>{alt_u}" in docsum.upper():
+                matched = True
+
+            # Secondary check: ALLELE=REF/ALT field inside DOCSUM
+            if not matched:
+                m = re.search(r'ALLELE=([^|;\s]+)', docsum, re.IGNORECASE)
+                if m:
+                    alleles = [a.strip().upper()
+                               for a in re.split(r'[/,]', m.group(1))]
+                    if ref_u in alleles and alt_u in alleles:
+                        matched = True
+
+            if matched:
+                matching.append(f"rs{uid}")
+                seen.add(uid)
+
+        return matching if matching else list(dict.fromkeys(fallback))
+
+    except Exception as e:
+        logger.debug(f"Allele filter esummary failed: {e}")
+        return fallback
+
+
+def fetch_rsid_entrez(chromosome, position, ref=None, alt=None, max_retries=5):
     """
     Fetch rsID(s) from NCBI Entrez for a given chromosome and position.
     Thread-safe version with rate limiting and retry logic.
-    
+
+    When ref and alt are supplied and the position returns more than one
+    candidate rsID, a second esummary call is made to filter to the rsID(s)
+    whose alleles match ref/alt exactly (SNP-Nexus-level precision).
+
     Parameters:
         chromosome: Chromosome identifier
         position: Genomic position
+        ref: Reference allele (optional, used for allele-level filtering)
+        alt: Alternate allele (optional, used for allele-level filtering)
         max_retries: Maximum number of retry attempts for transient failures (default: 5)
     """
     # Handle different chromosome formats
     if chromosome.startswith("NC_"):
-        # Extract chromosome number from RefSeq format (e.g., NC_000016.10 -> 16)
-        chrom_num = chromosome.replace("NC_0000", "").split(".")[0]
+        # Extract chromosome number from RefSeq format (e.g., NC_000001.11 -> 1, NC_000016.10 -> 16)
+        chrom_num = chromosome.replace("NC_", "").split(".")[0].lstrip("0") or "0"
     else:
-        chrom_num = str(chromosome)
+        # Strip 'chr' prefix for UCSC-style identifiers (e.g., chr1 -> 1)
+        chrom_num = str(chromosome).replace("chr", "").replace("Chr", "").replace("CHR", "")
     
     query = f"{chrom_num}[CHR] AND {position}[POS]"
     
-    # Rate limiting - conservative approach to avoid 429 errors
-    with _rate_limiter:
-        for attempt in range(max_retries):
-            try:
-                # Very conservative timing to respect NCBI rate limits
-                if hasattr(_last_request_time, 'value'):
-                    time_since_last = time.time() - _last_request_time.value
-                    if time_since_last < 0.5:  # Increased to 0.5s (2 requests/sec max)
-                        time.sleep(0.5 - time_since_last)
+    # Use smart global rate limiter
+    for attempt in range(max_retries):
+        try:
+            # Smart rate limiter ensures 3 req/sec globally
+            _rate_limiter.acquire()
+            
+            # Ensure email is set for Entrez
+            if not Entrez.email:
+                logger.error("Entrez email not set")
+                return None
                 
-                _last_request_time.value = time.time()
-                
-                # Ensure email is set for Entrez
-                if not Entrez.email:
-                    logger.error("Entrez email not set")
-                    return None
-                    
-                handle = Entrez.esearch(db="snp", term=query, retmax=20)  # Increased from 10 to 20 results
-                record = Entrez.read(handle)
-                handle.close()
+            handle = Entrez.esearch(db="snp", term=query, retmax=20)
+            record = Entrez.read(handle)
+            handle.close()
 
-                if record["IdList"]:
-                    rsids = [f"rs{rsid}" for rsid in record["IdList"]]
-                    result = ','.join(rsids)
-                    return result
+            if record["IdList"]:
+                id_list = record["IdList"]
+                # If ref/alt provided and multiple candidates: filter to matching allele
+                if ref and alt and len(id_list) > 1:
+                    rsids = _fetch_allele_filtered_rsids(id_list, ref, alt)
                 else:
-                    return None
-                    
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    # Log retry attempt with longer exponential backoff (1.5s, 3s, 4.5s, 6s, 7.5s)
-                    backoff_time = 1.5 * (attempt + 1)
-                    logger.warning(f"Retry {attempt + 1}/{max_retries} for chr{chrom_num}:{position} - {str(e)[:50]}")
-                    time.sleep(backoff_time)
-                    continue
-                else:
-                    # Final failure - log it
-                    logger.error(f"Failed to fetch rsID for chr{chrom_num}:{position} after {max_retries} attempts: {str(e)[:100]}")
-                    return None
-        
-        return None
+                    rsids = list(dict.fromkeys(f"rs{rsid}" for rsid in id_list))
+                return ','.join(rsids)
+            else:
+                return None
+                
+        except Exception as e:
+            if attempt < max_retries - 1:
+                # Progressive backoff: 1s, 2s, 3s, 4s, 5s
+                backoff_time = 1.0 * (attempt + 1)
+                logger.warning(f"Retry {attempt + 1}/{max_retries} for chr{chrom_num}:{position} - {str(e)[:50]}")
+                time.sleep(backoff_time)
+                continue
+            else:
+                # Final failure - log it
+                logger.error(f"Failed to fetch rsID for chr{chrom_num}:{position} after {max_retries} attempts: {str(e)[:100]}")
+                return None
+    
+    return None
 
 
 def fetch_rsid_batch(batch_data):
@@ -119,14 +214,14 @@ def fetch_rsid_batch(batch_data):
     """
     batch_idx, variants = batch_data
     results = []
-    
-    for variant_idx, (chromosome, position, current_id) in variants:
+
+    for variant_idx, (chromosome, position, current_id, ref, alt) in variants:
         if current_id == "." or current_id == "NORSID":
-            rsid = fetch_rsid_entrez(chromosome, position)
+            rsid = fetch_rsid_entrez(chromosome, position, ref=ref, alt=alt)
             results.append((variant_idx, rsid if rsid else "NORSID"))
         else:
             results.append((variant_idx, current_id))  # Keep existing rsID
-    
+
     return batch_idx, results
 
 
@@ -182,7 +277,8 @@ def annotate_vcf_with_entrez(input_vcf_path, final_output_vcf_path, progress_cal
             batch_variants = []
             for j in range(i, min(i + batch_size, total_rows)):
                 row = vcf.iloc[j]
-                batch_variants.append((j, (row['CHROM'], row['POS'], row['ID'])))
+                batch_variants.append((j, (row['CHROM'], row['POS'], row['ID'],
+                                           row['REF'], row['ALT'])))
             batches.append((i // batch_size, batch_variants))
         
         if is_cli_mode:
@@ -193,7 +289,7 @@ def annotate_vcf_with_entrez(input_vcf_path, final_output_vcf_path, progress_cal
                               leave=True)
         
         # Process batches in parallel with minimal worker count for maximum rate limit compliance
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             # Submit all batches for processing
             future_to_batch = {executor.submit(fetch_rsid_batch, batch): batch[0] 
                              for batch in batches}
@@ -303,7 +399,8 @@ def annotate_vcf_with_entrez_sequential(input_vcf_path, final_output_vcf_path, p
         for idx in range(total_rows):
             row = vcf.iloc[idx]
             if row['ID'] == "." or row['ID'] == "NORSID":
-                rsid = fetch_rsid_entrez(row['CHROM'], row['POS'])
+                rsid = fetch_rsid_entrez(row['CHROM'], row['POS'],
+                                         ref=row['REF'], alt=row['ALT'])
                 
                 if not rsid:
                     rsid = "NORSID"

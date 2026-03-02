@@ -1,0 +1,19 @@
+name: vcf_benchmark
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.12
+  - perl
+  - git
+  - matplotlib
+  - pandas
+  - psutil
+  - requests
+  - biopython
+  - openpyxl
+  - seaborn
+  - pip
+  - pip:
+    - cyvcf2  # Pure Python VCF library (Windows-compatible)

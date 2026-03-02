@@ -1,0 +1,50 @@
+[
+  {
+    "name": "GIAB_subset_A",
+    "file": "HG001_subset_A.vcf",
+    "description": "GIAB HG001 subset A (1000 variants)",
+    "chromosome": "1",
+    "equation": "x",
+    "format": "numeric",
+    "total_variants": 1000,
+    "annotated_variants": 994,
+    "unannotated_variants": 6,
+    "annotation_rate": 99.4,
+    "duration_seconds": 385.18,
+    "time_per_variant": 0.385,
+    "success": true,
+    "timestamp": "2025-11-27T10:49:05.810495"
+  },
+  {
+    "name": "GIAB_subset_D",
+    "file": "HG001_subset_D.vcf",
+    "description": "GIAB HG001 subset D (5000 variants)",
+    "chromosome": "1",
+    "equation": "x",
+    "format": "numeric",
+    "total_variants": 5000,
+    "annotated_variants": 4961,
+    "unannotated_variants": 39,
+    "annotation_rate": 99.22,
+    "duration_seconds": 1984.8,
+    "time_per_variant": 0.397,
+    "success": true,
+    "timestamp": "2025-11-27T11:22:10.953911"
+  },
+  {
+    "name": "ClinVar_chr20_full",
+    "file": "clinvar_chr20_cleaned.vcf",
+    "description": "ClinVar chromosome 20 full dataset (cleaned)",
+    "chromosome": "20",
+    "equation": "x",
+    "format": "numeric",
+    "total_variants": 83542,
+    "annotated_variants": 81155,
+    "unannotated_variants": 2387,
+    "annotation_rate": 97.14,
+    "duration_seconds": 32049.12,
+    "time_per_variant": 0.384,
+    "success": true,
+    "timestamp": "2025-11-27T20:16:20.602557"
+  }
+]

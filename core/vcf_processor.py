@@ -180,7 +180,25 @@ def clean_vcf(input_vcf, output_vcf):
             # Use last column as SAMPLE if available, otherwise empty
             vcf_cleaned['SAMPLE'] = vcf.iloc[:, -1] if num_cols > 8 else ''
         
-        # Extract chromosome from first row (don't hardcode NC_000016.10)
+        # Normalize chromosome names (extract NC_ from complex formats)
+        def normalize_chrom(chrom_raw):
+            """Extract clean NC_ accession from complex formats like 'ref|NC_000016.10|:55758000-55760576'"""
+            import re
+            chrom_str = str(chrom_raw)
+            
+            # Extract NC_ accession if present in complex formats
+            if '|' in chrom_str or ':' in chrom_str:
+                match = re.search(r'NC_\d+\.\d+', chrom_str)
+                if match:
+                    return match.group(0)
+            
+            # Already clean or simple format
+            return chrom_str
+        
+        # Normalize all chromosome values
+        vcf_cleaned['CHROM'] = vcf_cleaned['CHROM'].apply(normalize_chrom)
+        
+        # Extract chromosome from first row for contig header
         first_chrom = vcf_cleaned['CHROM'].iloc[0]
         
         # Write the cleaned VCF with proper headers
@@ -229,6 +247,40 @@ def filter_rsids_vcf(final_output_vcf, filtered_rsids_vcf):
     except pd.errors.EmptyDataError:
         # Handle completely empty file
         with open(filtered_rsids_vcf, 'w', encoding='utf-8') as output:
+            output.write("")
+        return "No variants found in annotated VCF"
+
+
+def filter_no_rsids_vcf(final_output_vcf, no_rsids_vcf):
+    """
+    Filters the final annotated VCF to include only entries WITHOUT rsIDs (NORSID).
+    This creates a file containing variants that could not be annotated.
+    """
+    try:
+        vcf = pd.read_csv(final_output_vcf, comment='#', sep='\t', header=None, dtype=str)
+        
+        # Handle empty file
+        if vcf.empty:
+            with open(no_rsids_vcf, 'w', encoding='utf-8') as output:
+                output.write("")
+            return "No variants found in annotated VCF"
+        
+        vcf.columns = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'SAMPLE']
+        
+        # Filter entries where ID is '.', empty, or 'NORSID'
+        no_rsids_vcf_data = vcf[vcf['ID'].isin(['.', '', 'NORSID'])]
+        
+        # Write clean VCF without extra columns
+        with open(no_rsids_vcf, 'w', encoding='utf-8') as output:
+            for _, row in no_rsids_vcf_data.iterrows():
+                line_data = [str(row['CHROM']), str(row['POS']), str(row['ID']), 
+                           str(row['REF']), str(row['ALT']), str(row['QUAL']), str(row['SAMPLE'])]
+                output.write('\t'.join(line_data) + '\n')
+        
+        return f"Found {len(no_rsids_vcf_data)} variants without rsIDs out of {len(vcf)} total variants"
+    except pd.errors.EmptyDataError:
+        # Handle completely empty file
+        with open(no_rsids_vcf, 'w', encoding='utf-8') as output:
             output.write("")
         return "No variants found in annotated VCF"
 

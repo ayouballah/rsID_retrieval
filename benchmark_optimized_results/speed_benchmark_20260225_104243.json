@@ -1,0 +1,42 @@
+[
+  {
+    "name": "GIAB_subset_A",
+    "file": "HG001_subset_A.vcf",
+    "description": "GIAB HG001 subset A (1000 variants)",
+    "chromosome": "1",
+    "equation": "x",
+    "format": "numeric",
+    "total_variants": 1000,
+    "annotated_variants": 994,
+    "unannotated_variants": 6,
+    "annotation_rate": 99.4,
+    "duration_seconds": 683.89,
+    "time_per_variant": 0.684,
+    "success": true,
+    "timestamp": "2026-02-24T20:49:26.252923"
+  },
+  {
+    "name": "ClinVar_chr20_full",
+    "file": "clinvar_chr20_cleaned.vcf",
+    "description": "ClinVar chromosome 20 full dataset (cleaned)",
+    "chromosome": "20",
+    "equation": "x",
+    "format": "numeric",
+    "total_variants": 83542,
+    "annotated_variants": 81155,
+    "unannotated_variants": 2387,
+    "annotation_rate": 97.14,
+    "duration_seconds": 43158.91,
+    "time_per_variant": 0.517,
+    "success": true,
+    "timestamp": "2026-02-25T10:36:54.321556"
+  },
+  {
+    "name": "GIAB_subset_D",
+    "file": "HG001_subset_D.vcf",
+    "error": "'charmap' codec can't encode character '\\u258e' in position 26: character maps to <undefined>",
+    "duration_seconds": 97.62,
+    "success": false,
+    "timestamp": "2026-02-25T10:42:43.038729"
+  }
+]
